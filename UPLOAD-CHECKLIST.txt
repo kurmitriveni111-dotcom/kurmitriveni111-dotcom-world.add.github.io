@@ -1,0 +1,26 @@
+FORMA X ANDROID BUILD PACKAGE - UPLOAD CHECKLIST
+
+This ZIP is already complete. Do not upload the ZIP file itself to GitHub.
+
+1. Extract this ZIP using Samsung My Files.
+2. Open the extracted folder. It should contain:
+   - .github (folder)
+   - assets (folder with five PNG launcher icons)
+   - www (folder containing index.html - the FORMA X app)
+   - .gitignore
+   - capacitor.config.json
+   - package.json
+   - README.txt
+   - README-PHONE-SETUP.txt
+   - UPLOAD-CHECKLIST.txt
+3. Upload all extracted items to the ROOT of your private GitHub repository.
+4. Keep folders and their contents in the same structure. In particular:
+   .github/workflows/build-android.yml
+   assets/ic_launcher_mdpi.png (and the other four densities)
+   www/index.html
+5. Commit the upload. Then open the Actions tab and run the workflow named
+   "Build FORMA X Android APK".
+
+If Samsung My Files shows www as empty, do not continue with that extraction.
+Delete that extracted copy and extract this ZIP again. Confirm www/index.html
+is visible before uploading.

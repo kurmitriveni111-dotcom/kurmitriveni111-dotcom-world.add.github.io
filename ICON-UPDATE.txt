@@ -1,0 +1,3 @@
+FORMA X launcher icon update
+The Android launcher icon assets in assets/ have been refreshed with a metallic X mark, dark navy base, and electric blue/purple accents.
+The GitHub Actions workflow copies these assets into the generated Android mipmap resources during the APK build.

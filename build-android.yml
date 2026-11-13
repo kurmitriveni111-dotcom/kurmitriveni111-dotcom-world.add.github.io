@@ -1,0 +1,62 @@
+name: Build FORMA X Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get project
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install project packages
+        run: npm install
+
+      - name: Create Android project
+        run: npx cap add android
+
+      - name: Copy web app and FORMA X launcher icon
+        run: |
+          npx cap sync android
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do \
+            cp assets/ic_launcher_${density}.png android/app/src/main/res/mipmap-${density}/ic_launcher.png; \
+            cp assets/ic_launcher_${density}.png android/app/src/main/res/mipmap-${density}/ic_launcher_round.png; \
+          done
+          mkdir -p android/app/src/main/res/drawable-nodpi android/app/src/main/res/mipmap-anydpi-v26
+          cp assets/ic_launcher_xxxhdpi.png android/app/src/main/res/drawable-nodpi/forma_x_foreground.png
+          cat > android/app/src/main/res/values/forma_x_icon_background.xml <<'XML'
+          <resources><color name="forma_x_icon_background">#0C1422</color></resources>
+          XML
+          cat > android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'XML'
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@color/forma_x_icon_background"/><foreground android:drawable="@drawable/forma_x_foreground"/></adaptive-icon>
+          XML
+          cp android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+
+      - name: Build debug APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Save APK as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FORMA-X-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
