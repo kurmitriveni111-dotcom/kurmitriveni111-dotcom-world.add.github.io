@@ -420,6 +420,7 @@ body.fullscreen-fallback{overflow:hidden!important}
   <div class="row2"><span>Connect direction</span><select id="landDirection"><option>Auto</option><option>East</option><option>West</option><option>North</option><option>South</option></select></div>
   <button class="btn" id="addLandTiles" style="width:100%;margin:3px 0">＋ Add and connect land tiles</button>
   <div class="row"><button class="btn" id="stitchLand">Join / stitch edges</button><button class="btn" id="deleteLandTile">Delete selected land</button></div>
+  <button class="btn danger" id="removeAllLandOnly" style="width:100%;margin:3px 0">Remove Land Only</button>
   <button class="btn" id="saveLandToLibrary" style="width:100%;margin:3px 0">▣ Save active land tile to My Asset Library</button>
   <div class="row"><button class="btn" id="flatWorld">Flatten all land</button><button class="btn" id="resetLandShape">Reset tile shape</button></div>
   <small id="landInfo" style="color:var(--mu);display:block;margin-top:4px">Grassland · 600 × 600 units · centre (0, 0)</small>
@@ -743,14 +744,15 @@ function updateAdaptiveFog(){
 }
 function updateEnvironment(type){const L=LANDS[type]||LANDS.Grassland;scene.background=new T.Color(L.sky);scene.fog=null;adaptiveFogKey='';stars.visible=!!L.stars;grid.visible=gridOn;updateAdaptiveFog();}
 function setActiveTile(tile){if(!tile||!tile.userData.isTerrain)return;activeTile=tile;land=tile.userData.landType;updateEnvironment(land);$$('#lands button').forEach(b=>b.classList.toggle('on',b.dataset.land===land));const x=Math.round(tile.position.x),z=Math.round(tile.position.z),p=tile.geometry.attributes.position;let mn=Infinity,mx=-Infinity;for(let i=0;i<p.count;i++){mn=Math.min(mn,p.getY(i));mx=Math.max(mx,p.getY(i))}const info=$('#landInfo');if(info)info.textContent=`${land} · ${TILE_SIZE} × ${TILE_SIZE} units · centre (${x}, ${z}) · elevation ${mn.toFixed(1)} to ${mx.toFixed(1)} · ${terrainTiles.length} connected tiles`}
-function setLand(n,record=true){if(!LANDS[n])return;if(record&&activeTile&&terrainTiles.includes(activeTile))rememberTerrainGeometry([activeTile,...Object.values(neighbours(activeTile)).filter(Boolean)]);land=n;if(!activeTile||!terrainTiles.includes(activeTile))activeTile=ground;activeTile.userData.landType=n;generateTerrainTile(activeTile,n);stitchLandSeams(false,[activeTile]);updateEnvironment(n);$$('#lands button').forEach(b=>b.classList.toggle('on',b.dataset.land===n));setActiveTile(activeTile)}
+function setLand(n,record=true){if(!LANDS[n])return;if(record&&activeTile&&terrainTiles.includes(activeTile))rememberTerrainGeometry([activeTile,...Object.values(neighbours(activeTile)).filter(Boolean)]);land=n;if(!activeTile||!terrainTiles.includes(activeTile)){activeTile=ground;if(ground.parent!==terrainRoot)terrainRoot.add(ground);if(!terrainTiles.includes(ground))terrainTiles.push(ground)}activeTile.userData.landType=n;generateTerrainTile(activeTile,n);stitchLandSeams(false,[activeTile]);updateEnvironment(n);$$('#lands button').forEach(b=>b.classList.toggle('on',b.dataset.land===n));setActiveTile(activeTile);outliner()}
 function makeTerrainTile(type,x,z){const g=makeTerrainGeometry(),t=new T.Mesh(g,makeTerrainMaterial());t.position.set(x,0,z);t.receiveShadow=true;t.castShadow=false;t.userData={isTerrain:true,landType:type,tileId:nextTileId++,seed:lseed,paintColors:new Float32Array(g.attributes.position.count*3),paintWeights:new Float32Array(g.attributes.position.count)};terrainRoot.add(t);terrainTiles.push(t);generateTerrainTile(t,type);return t}
 async function addConnectedLand(count,type,direction){
- count=Number(count);if(!Number.isFinite(count)||count<1)return toast('Enter a positive whole number of land tiles');count=Math.floor(count);type=LANDS[type]?type:'Grassland';const dirs={East:[1,0],West:[-1,0],North:[0,1],South:[0,-1]},created=[];
+ count=Number(count);if(!Number.isFinite(count)||count<1)return toast('Enter a positive whole number of land tiles');count=Math.floor(count);const requestedCount=count;type=LANDS[type]?type:'Grassland';const dirs={East:[1,0],West:[-1,0],North:[0,1],South:[0,-1]},created=[];
  const activeBefore=activeTile,occupied=new Set(terrainTiles.map(t=>tileKey(t.position.x,t.position.z))),yieldUI=()=>new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+ if(!terrainTiles.length){const first=makeTerrainTile(type,0,0);created.push(first);occupied.add(tileKey(0,0));count=Math.max(0,count-1);activeTile=first;}
  const addOne=(x,z)=>{const key=tileKey(x,z);if(occupied.has(key))return null;occupied.add(key);const t=makeTerrainTile(type,x,z);created.push(t);return t};
- if(direction!=='Auto'&&dirs[direction]){const [dx,dz]=dirs[direction];let x=activeTile.position.x,z=activeTile.position.z;for(let i=0;i<count;i++){let tries=0;do{x+=dx*TILE_SIZE;z+=dz*TILE_SIZE;tries++}while(occupied.has(tileKey(x,z))&&tries<100000);if(occupied.has(tileKey(x,z)))break;addOne(x,z);if(created.length%6===0){toast(`Building connected world · ${created.length.toLocaleString()} / ${count.toLocaleString()} tiles`);await yieldUI()}}}
- else {const queue=[...terrainTiles],seen=new Set(occupied),order=[[1,0],[0,1],[-1,0],[0,-1]];let qi=0;while(created.length<count&&qi<queue.length){const base=queue[qi++];for(const [dx,dz] of order){if(created.length>=count)break;const x=base.position.x+dx*TILE_SIZE,z=base.position.z+dz*TILE_SIZE,k=tileKey(x,z);if(seen.has(k))continue;seen.add(k);const t=makeTerrainTile(type,x,z);created.push(t);queue.push(t);if(created.length%6===0){toast(`Building connected world · ${created.length.toLocaleString()} / ${count.toLocaleString()} tiles`);await yieldUI()}}}}
+ if(direction!=='Auto'&&dirs[direction]){const [dx,dz]=dirs[direction];let x=activeTile?activeTile.position.x:0,z=activeTile?activeTile.position.z:0;for(let i=0;i<count;i++){let tries=0;do{x+=dx*TILE_SIZE;z+=dz*TILE_SIZE;tries++}while(occupied.has(tileKey(x,z))&&tries<100000);if(occupied.has(tileKey(x,z)))break;addOne(x,z);if(created.length%6===0){toast(`Building connected world · ${created.length.toLocaleString()} / ${count.toLocaleString()} tiles`);await yieldUI()}}}
+ else {const queue=[...terrainTiles],seen=new Set(occupied),order=[[1,0],[0,1],[-1,0],[0,-1]];let qi=0;while(created.length<requestedCount&&qi<queue.length){const base=queue[qi++];for(const [dx,dz] of order){if(created.length>=count)break;const x=base.position.x+dx*TILE_SIZE,z=base.position.z+dz*TILE_SIZE,k=tileKey(x,z);if(seen.has(k))continue;seen.add(k);const t=makeTerrainTile(type,x,z);created.push(t);queue.push(t);if(created.length%6===0){toast(`Building connected world · ${created.length.toLocaleString()} / ${count.toLocaleString()} tiles`);await yieldUI()}}}}
  if(!created.length)return toast('No free edge found for a connected land tile');stitchLandSeams(false,created);activeTile=created[created.length-1];rememberTerrainStructure('add',created,created.map(t=>terrainTiles.indexOf(t)),activeBefore,activeTile);land=type;updateEnvironment(type);setActiveTile(activeTile);outliner();toast(`${created.length.toLocaleString()} connected ${type} land tile${created.length===1?'':'s'} added · no application tile-count cap`);
 }
 function stitchActiveTileEdges(tile){if(!tile)return;const side=TILE_SEGMENTS,row=side+1,blend=10,p=tile.geometry.attributes.position,n=neighbours(tile);const sync=(dir,nb)=>{if(!nb)return;const q=nb.geometry.attributes.position;for(let k=0;k<=side;k++){for(let d=0;d<=blend;d++){let ia,ib,dist=d;if(dir==='west'){ia=k*row+d;ib=k*row+side-d}else if(dir==='east'){ia=k*row+side-d;ib=k*row+d}else if(dir==='south'){ia=d*row+k;ib=(side-d)*row+k}else{ia=(side-d)*row+k;ib=d*row+k}const edge=q.getY(ib),original=p.getY(ia),w=smoothstep(0,blend,dist);p.setY(ia,edge*(1-w)+original*w)}}};sync('west',n.west);sync('east',n.east);sync('south',n.south);sync('north',n.north);p.needsUpdate=true;tile.geometry.computeVertexNormals();tile.geometry.computeBoundingBox();tile.geometry.computeBoundingSphere();colorizeTile(tile)}
@@ -765,6 +767,7 @@ function stitchLandSeams(showToast=true,onlyTiles=null){
  if(showToast)toast('Connected edges stitched and normals rebuilt')
 }
 function deleteActiveLand(){if(terrainTiles.length<=1)return toast('The last land tile cannot be deleted');const gone=activeTile,index=terrainTiles.indexOf(gone),before=gone,was=terrainTiles.length;terrainRoot.remove(gone);terrainTiles=terrainTiles.filter(t=>t!==gone);activeTile=terrainTiles[0];land=activeTile.userData.landType;updateEnvironment(land);setActiveTile(activeTile);rememberTerrainStructure('remove',[gone],[index],before,activeTile);outliner();toast('Selected land tile deleted · Ctrl+Z to restore')}
+function removeAllLandOnly(){if(!terrainTiles.length)return toast('There is no land to remove');if(!confirm('Remove all land tiles only? Buildings, trees, roads, rocks, furniture, imported models and other scene objects will be kept. You can use Undo to restore the land.'))return;const gone=terrainTiles.slice(),indices=gone.map(t=>terrainTiles.indexOf(t)),before=activeTile;gone.forEach(t=>terrainRoot.remove(t));terrainTiles=[];activeTile=null;rememberTerrainStructure('remove',gone,indices,before,null);outliner();props();snap();if(typeof lfScheduleSave==='function')lfScheduleSave();toast('Land removed only · other objects kept · Ctrl+Z to restore')}
 function resetActiveTerrain(){if(!activeTile)return;rememberTerrainGeometry([activeTile,...Object.values(neighbours(activeTile)).filter(Boolean)]);ensurePaint(activeTile);activeTile.userData.paintColors.fill(0);activeTile.userData.paintWeights.fill(0);generateTerrainTile(activeTile,activeTile.userData.landType);stitchLandSeams(false,[activeTile]);toast('Active land tile reset')}
 $('#lands').innerHTML=Object.keys(LANDS).map(n=>`<button data-land="${n}" title="Select ${n}" style="border-color:${LANDS[n].hi};background:linear-gradient(135deg,${LANDS[n].lo},${LANDS[n].hi});color:#061322;text-shadow:0 1px 1px #fff8">${n}</button>`).join('');
 $('#lands').onclick=e=>{const b=e.target.closest('[data-land]');if(b)setLand(b.dataset.land)};
@@ -775,7 +778,7 @@ $('#terrainStrengthEntry')?.addEventListener('change',e=>{const v=Math.max(.05,M
 $('#terrainStrength')?.addEventListener('input',e=>{const n=$('#terrainStrengthEntry');if(n)n.value=e.target.value});
 $('#tod').oninput=e=>{const h=+e.target.value,a=(h-6)/12*Math.PI;sun.position.set(Math.cos(a)*250,Math.max(8,Math.sin(a)*250),100);sun.intensity=Math.max(.15,Math.sin(a))*1.3;hemi.intensity=.25+Math.max(0,Math.sin(a))*.6};
 let gridOn=true;
-$('#reg').onclick=()=>{rememberTerrainGeometry([activeTile,...Object.values(neighbours(activeTile)).filter(Boolean)]);activeTile.userData.seed=++lseed;generateTerrainTile(activeTile,activeTile.userData.landType);stitchLandSeams(false,[activeTile]);toast('Active tile regenerated')};
+$('#reg').onclick=()=>{if(!activeTile)return toast('Add land first');rememberTerrainGeometry([activeTile,...Object.values(neighbours(activeTile)).filter(Boolean)]);activeTile.userData.seed=++lseed;generateTerrainTile(activeTile,activeTile.userData.landType);stitchLandSeams(false,[activeTile]);toast('Active tile regenerated')};
 
 // Connected-land controls: choose a biome, quantity and direction, then append one or many adjoining tiles.
 const landTypeSelect=$('#landTypeSelect');if(landTypeSelect)landTypeSelect.innerHTML=Object.keys(LANDS).map(n=>`<option value="${n}">${n}</option>`).join('');
@@ -783,6 +786,7 @@ function updateNewLandPreview(){const type=landTypeSelect.value,L=LANDS[type]||L
 landTypeSelect?.addEventListener('change',updateNewLandPreview);updateNewLandPreview();
 $('#addLandTiles')?.addEventListener('click',()=>addConnectedLand($('#landCount').value,$('#landTypeSelect').value,$('#landDirection').value).catch(e=>{console.error(e);toast('World expansion stopped: '+e.message)}));
 $('#deleteLandTile')?.addEventListener('click',deleteActiveLand);
+$('#removeAllLandOnly')?.addEventListener('click',removeAllLandOnly);
 $('#stitchLand')?.addEventListener('click',()=>{rememberTerrainGeometry(terrainTiles);stitchLandSeams()});
 $('#resetLandTile')?.addEventListener('click',resetActiveTerrain);
 $('#resetLandShape')?.addEventListener('click',resetActiveTerrain);
@@ -1172,7 +1176,7 @@ const FB=['⌂ Home','⇩ Import','⇧ Export GLB','▣ Copy','▣ Paste','✕ D
 $('#foot').innerHTML=FB.map((f,i)=>`<button class="${i==10?'play':''}">${f}</button>`).join('');
 const dl=(blob,name)=>{if(!(blob instanceof Blob))blob=new Blob([blob]);const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(name||'forma-export').replace(/[\\/:*?"<>|]+/g,'_');a.style.display='none';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},3000);return true};
 function safeFileBase(name){return String(name||'forma-x').replace(/[^a-z0-9._-]+/gi,'_').replace(/^_+|_+$/g,'')||'forma-x'}
-function exportClone(object){const clone=object.clone(true);clone.traverse(o=>{const u=o.userData||{},keep={};const keys=o===clone?['formaUnit','unitScale','geoOrigin','coordinateReference','formaLayers','formaActiveLayer']:['formaLayer','formaLocked','formaLayerLocked','tags','formaPointCloud','pointCount','source','coordinateColumns','geoReference','importedDEM'];keys.forEach(k=>{if(u[k]!==undefined){try{JSON.stringify(u[k]);keep[k]=u[k]}catch(e){}}});o.userData=u.isTerrain?{...keep,isTerrain:true,landType:u.landType||'Grassland',tileId:Number(u.tileId)||0,seed:Number(u.seed)||1}:u.isTerrainRoot?{...keep,isTerrainRoot:true}:u.isWaterSurface?{...keep,isWaterSurface:true}:keep;if(o.isMesh)o.frustumCulled=false});clone.updateMatrixWorld(true);return clone}
+function exportClone(object){const clone=object.clone(true);fxSanitizeObjectTree(clone);clone.traverse(o=>{const u=o.userData||{},keep={};const keys=o===clone?['formaUnit','unitScale','geoOrigin','coordinateReference','formaLayers','formaActiveLayer']:['formaLayer','formaLocked','formaLayerLocked','tags','formaPointCloud','pointCount','source','coordinateColumns','geoReference','importedDEM'];keys.forEach(k=>{if(u[k]!==undefined){try{JSON.stringify(u[k]);keep[k]=u[k]}catch(e){}}});o.userData=u.isTerrain?{...keep,isTerrain:true,landType:u.landType||'Grassland',tileId:Number(u.tileId)||0,seed:Number(u.seed)||1}:u.isTerrainRoot?{...keep,isTerrainRoot:true}:u.isWaterSurface?{...keep,isWaterSurface:true}:keep;if(o.isMesh)o.frustumCulled=false});clone.updateMatrixWorld(true);return clone}
 function exportGLBBlob(object){return new Promise((resolve,reject)=>{if(!T.GLTFExporter)return reject(new Error('GLB exporter did not load. Check internet access and reload.'));try{const root=exportClone(object);new T.GLTFExporter().parse(root,result=>{if(result instanceof ArrayBuffer)resolve(new Blob([result],{type:'model/gltf-binary'}));else reject(new Error('GLB exporter returned a non-binary result'))},err=>reject(err instanceof Error?err:new Error(String(err))),{binary:true,onlyVisible:true,embedImages:true});}catch(err){reject(err)}})}
 async function downloadGLB(object,name){try{const blob=await exportGLBBlob(object);dl(blob,name);toast('3D GLB saved: '+name)}catch(err){console.error(err);toast('GLB export failed: '+(err.message||err))}}
 function forEachVisibleMesh(root,callback){root.updateMatrixWorld(true);root.traverse(node=>{if(!node.isMesh||!node.geometry||!node.geometry.attributes.position)return;let visible=true;for(let p=node;p;p=p.parent)if(!p.visible){visible=false;break}if(visible)callback(node)})}
@@ -1822,9 +1826,40 @@ Object.assign(WORLD_ACTIONS,{
 delete WORLD_ACTIONS['Projection Settings'];delete WORLD_ACTIONS['Coordinate Reference System'];
 delete WORLD_ACTIONS['Create Layer'];delete WORLD_ACTIONS['Duplicate Layer'];delete WORLD_ACTIONS['Layer Visibility'];delete WORLD_ACTIONS['Collection Visibility'];delete WORLD_ACTIONS['Create Collection'];delete WORLD_ACTIONS['Move to Collection'];delete WORLD_ACTIONS['Move to Layer'];
 
+/* Validate restored meshes/materials before they reach the viewport or exporter. */
+function fxSanitizeObjectTree(root){
+ if(!root||typeof root.traverse!=='function')throw Error('Project has no valid 3D scene');
+ let meshCount=0,validMeshCount=0;
+ root.traverse(o=>{
+  if(!o.isMesh)return;meshCount++;
+  const g=o.geometry,p=g&&g.attributes&&g.attributes.position;
+  if(!g||!p||!Number.isFinite(p.count)||p.count<3){o.visible=false;return}
+  let changed=false;
+  for(let i=0;i<p.array.length;i++)if(!Number.isFinite(p.array[i])){p.array[i]=0;changed=true}
+  if(changed)p.needsUpdate=true;
+  const index=g.index;if(index){let bad=false;for(let i=0;i<index.count;i++){const v=index.getX(i);if(!Number.isInteger(v)||v<0||v>=p.count){bad=true;break}}if(bad){g.setIndex(null);if(p.count%3!==0)o.visible=false}}
+  const color=g.attributes.color;
+  if(color){let bad=false;for(let i=0;i<color.array.length;i++){if(!Number.isFinite(color.array[i])){color.array[i]=1;bad=true}else color.array[i]=Math.max(0,Math.min(1,color.array[i]))}if(bad)color.needsUpdate=true}
+  if(g.attributes.normal){const n=g.attributes.normal;let bad=false;for(let i=0;i<n.array.length;i++)if(!Number.isFinite(n.array[i])){bad=true;break}if(bad)g.deleteAttribute('normal')}
+  if(!g.attributes.normal)try{g.computeVertexNormals()}catch(e){}
+  try{g.computeBoundingBox();g.computeBoundingSphere()}catch(e){o.visible=false}
+  const mats=Array.isArray(o.material)?o.material:[o.material];
+  mats.forEach(m=>{if(!m)return;if(m.color){if(![m.color.r,m.color.g,m.color.b].every(Number.isFinite))m.color.set(0xbac8d8)}if(m.vertexColors&&!g.attributes.color)m.vertexColors=false;if(m.emissive&&![m.emissive.r,m.emissive.g,m.emissive.b].every(Number.isFinite))m.emissive.set(0x000000);m.needsUpdate=true});
+  if(o.visible)validMeshCount++;
+ });
+ if(meshCount&&!validMeshCount)throw Error('The project contains no usable mesh geometry; current scene was not replaced');
+ return root;
+}
+function fxSanitizeTerrainTiles(){
+ terrainTiles=terrainRoot.children.filter(t=>t.userData&&t.userData.isTerrain&&t.isMesh);
+ terrainTiles.forEach(t=>{try{if(!t.geometry.attributes.normal)t.geometry.computeVertexNormals();ensurePaint(t);colorizeTile(t);t.geometry.computeBoundingBox();t.geometry.computeBoundingSphere()}catch(e){console.warn('Terrain repair skipped:',e)}});
+ activeTile=activeTile&&terrainTiles.includes(activeTile)?activeTile:(terrainTiles[0]||null);
+ if(activeTile){land=activeTile.userData.landType||'Grassland';updateEnvironment(land);setActiveTile(activeTile)}
+}
+
 /* Full project opening replaces the current scene; ordinary Import still merges content. */
 function worldReplaceProjectRoot(loaded){
- if(!loaded)throw Error('The project file contains no scene');loaded.updateMatrixWorld(true);let savedTerrain=null;loaded.traverse(c=>{if(!savedTerrain&&c.name==='Connected Land System')savedTerrain=c});const src=savedTerrain?.parent||loaded;
+ if(!loaded)throw Error('The project file contains no scene');fxSanitizeObjectTree(loaded);loaded.updateMatrixWorld(true);let savedTerrain=null;loaded.traverse(c=>{if(!savedTerrain&&c.name==='Connected Land System')savedTerrain=c});const src=savedTerrain?.parent||loaded;
  const rootPos=src.position?.clone?.()||new T.Vector3(),rootQuat=src.quaternion?.clone?.()||new T.Quaternion(),rootScale=src.scale?.clone?.()||new T.Vector3(1,1,1);
  sceneObjects().forEach(c=>world.remove(c));terrainRoot.clear();terrainTiles=[];activeTile=null;
  world.position.copy(rootPos);world.quaternion.copy(rootQuat);world.scale.copy(rootScale);world.userData={...(src.userData||{})};
@@ -2005,7 +2040,19 @@ function lfScheduleSave(){if(!LF.member&&!LF.guest)return;LF.dirty=true;$('#lfSa
 function lfEnsureAutosave(){if(LF.autosaveInterval)clearInterval(LF.autosaveInterval);LF.autosaveInterval=setInterval(()=>{if((LF.member||LF.guest)&&(LF.dirty||Date.now()-(LF.lastSaved||0)>20000))lfStoreProject(false,true)},15000)}
 async function lfGetProjects(){const db=await lfDb();return new Promise((res,rej)=>{const r=db.transaction('projects').objectStore('projects').getAll();r.onsuccess=()=>res(r.result.filter(p=>p.owner===lfProjectOwner()).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))));r.onerror=()=>rej(r.error)})}
 async function lfRenderProjects(){try{const list=$('#lfProjectList'),projects=await lfGetProjects();list.innerHTML=projects.length?'':'<p class="lf-muted">No saved projects yet. Your current work is automatically saved while you edit.</p>';projects.forEach(p=>{const row=document.createElement('div');row.className='lf-object';const name=document.createElement('span');name.textContent=p.name+' · '+new Date(p.updatedAt).toLocaleString();const open=document.createElement('button');open.className='btn';open.textContent='Restore';open.onclick=()=>lfRestoreProject(p);const rename=document.createElement('button');rename.className='btn';rename.textContent='Rename';rename.onclick=async()=>{p.name=prompt('New project name',p.name)||p.name;const db=await lfDb();db.transaction('projects','readwrite').objectStore('projects').put(p);lfRenderProjects()};const dup=document.createElement('button');dup.className='btn';dup.textContent='Duplicate';dup.onclick=async()=>{const db=await lfDb();p.id='p-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);p.owner=lfProjectOwner();p.name=p.name+' copy';p.updatedAt=new Date().toISOString();db.transaction('projects','readwrite').objectStore('projects').put(p);lfRenderProjects()};const del=document.createElement('button');del.className='btn danger';del.textContent='Delete';del.onclick=async()=>{if(confirm('Delete saved project '+p.name+'?')){const db=await lfDb();db.transaction('projects','readwrite').objectStore('projects').delete(p.id);lfRenderProjects()}};row.append(name,open,rename,dup,del);list.append(row)})}catch(e){$('#lfProjectList').textContent='Browser storage unavailable: '+e.message}}
-function lfRestoreProject(p){if(!p?.scene)return lfToast('Saved project has no scene data');try{const loader=new T.ObjectLoader(),restored=loader.parse(p.scene);world.clear();world.userData={...(restored.userData||{})};for(const child of [...restored.children])world.add(child);if(p.camera){cam.position.fromArray(p.camera.position);cam.quaternion.fromArray(p.camera.quaternion)}sel=null;outliner();props();snap();$('#lfProjects').classList.remove('show');lfToast('Restored '+p.name)}catch(e){lfToast('Restore failed: '+e.message)}}
+function lfRestoreProject(p){if(!p?.scene)return lfToast('Saved project has no scene data');try{
+ const loader=new T.ObjectLoader(),restored=fxSanitizeObjectTree(loader.parse(p.scene));
+ const savedTerrain=restored.children.find(c=>c.name==='Connected Land System'||c.userData?.isTerrainRoot)||null;
+ const otherChildren=[...restored.children].filter(c=>c!==savedTerrain);
+ // Validate fully before mutating the current scene; keep the live terrainRoot reference used by all tools.
+ terrainRoot.clear();terrainTiles=[];activeTile=null;
+ if(savedTerrain){terrainRoot.position.copy(savedTerrain.position);terrainRoot.quaternion.copy(savedTerrain.quaternion);terrainRoot.scale.copy(savedTerrain.scale);terrainRoot.userData={...(savedTerrain.userData||{}),isTerrainRoot:true};[...savedTerrain.children].forEach(c=>terrainRoot.add(c));}
+ else {terrainRoot.position.set(0,0,0);terrainRoot.quaternion.identity();terrainRoot.scale.set(1,1,1);terrainRoot.userData={isTerrainRoot:true};}
+ world.clear();world.userData={...(restored.userData||{})};world.add(terrainRoot);otherChildren.forEach(child=>world.add(child));
+ fxSanitizeTerrainTiles();
+ if(p.camera){if(Array.isArray(p.camera.position)&&p.camera.position.length===3&&p.camera.position.every(Number.isFinite))cam.position.fromArray(p.camera.position);if(Array.isArray(p.camera.quaternion)&&p.camera.quaternion.length===4&&p.camera.quaternion.every(Number.isFinite))cam.quaternion.fromArray(p.camera.quaternion)}
+ sel=null;outliner();props();snap();lfScheduleSave();$('#lfProjects').classList.remove('show');lfToast('Restored '+p.name)
+ }catch(e){console.error('Project restore rejected:',e);lfToast('Restore failed; current scene was kept: '+e.message)}}
 async function lfInitializeMemberSession(){
  document.body.classList.add('lf-locked');lfLogin.classList.add('show');let saved=null;try{saved=JSON.parse(localStorage.getItem(LF_SESSION_KEY)||'null')}catch{}
  if(!saved){$('#lfAuthNotice').textContent='Login required. Enter your Username, Member Key and active Reference Code.';return}
